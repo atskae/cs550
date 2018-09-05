@@ -28,21 +28,26 @@ int main(int argc, char** argv) {
 	indent(H);
 	printf("(%i): Height of the tree = %i\n", getpid(), H);
 	indent(H);
-	printf("(%i): Creating %i children from height %i\n---\n", getpid(), C, H-1);
+	if(H > 0) printf("(%i): Creating %i children from height %i\n", getpid(), C, H-1);
 
-	if(H == 1) { // base case
+	if(H == 0) { // base case
 		indent(H); 
 		printf("(%i) Terminating at height %i\n", getpid(), H);
 		exit(0);			
-	} else {
-	
+	} else {	
 		pid_t parent = getpid();
-		pid_t result, w;
+		pid_t result; 
 		int status = 0;
 		pid_t children[C];
 
 		for(int i=0; i<C; i++) {
-			if(getpid() == parent) children[i] = fork();
+			if(getpid() == parent) {
+				children[i] = fork();
+				if(children[i] == -1) {
+					printf("(%i) Error. Child process could not be created.\n", getpid());
+					exit(1);
+				}
+			}
 			if(children[i] == 0) {
 				result = children[i];
 				break; // child		
@@ -64,9 +69,10 @@ int main(int argc, char** argv) {
 			char arg2[100];
 			sprintf(arg1, "%i", H-1);
 			sprintf(arg2, "%i", C);
-			int error = execl(argv[0], argv[0], arg1, arg2, NULL);
+			int error = execlp(argv[0], argv[0], arg1, arg2, NULL); // l: individual params; v: array of char ptrs ; without p: need absolute path of executable	
 			
-			perror("(%i) execl() failed.\n");
+			printf("(%i) execlp() failed.\n", getpid());
+			exit(1);
 		}
 	}
 
