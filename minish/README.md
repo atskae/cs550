@@ -12,7 +12,7 @@ To start the mini shell, run:
 ./minish <commands>
 ```
 
-# Mini Shell Commands
+## Mini Shell Commands
 Run an executable:
 ```
 ./minish <executable name> <arg0> <arg1> ... <argn>
