@@ -9,7 +9,7 @@ make
 
 To start the mini shell, run:
 ```
-./minish <commands>
+./minish
 ```
 
 ## Mini Shell Commands
@@ -20,5 +20,5 @@ Run an executable:
 
 Run an executable in background mode
 ```
-./minish <executable name> & <arg0> <arg1> ... <argn>
+./minish <executable name> <arg0> <arg1> ... <argn> &
 ```
