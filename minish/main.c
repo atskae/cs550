@@ -7,7 +7,15 @@
 #include <fcntl.h>
 
 #define MAX_BUFFER_SIZE 256
+#define MAX_COMMANDS 256
 #define MAX_ARGS 8
+
+// indices to the metadata array ; info about each command
+#define METADATA_SIZE 4
+#define METADATA_NUM_ARGS 0
+#define METADATA_BG_MODE 1
+#define METADATA_REDIR 2
+#define METADATA_FILE_IDX 3
 
 #define NO_REDIR 0
 #define REDIR_R 1
@@ -15,8 +23,91 @@
 
 void bg_process(int signal) {
 	int status;
-	pid_t pid = waitpid(-1, &status, WNOHANG);
+	waitpid(-1, &status, WNOHANG);
 //	printf("%i process exited.\n", pid);
+}
+
+char** all_commands[MAX_COMMANDS] = {NULL}; // MAX_COMMANDS = maximum number of filters per command line
+int metadata[MAX_COMMANDS][4] = {0}; // for each command [number of arguments, background mode, redirection, file index]
+
+void execute_commands(int pos) {
+	
+	int args_pos = metadata[pos][METADATA_NUM_ARGS];
+	// debug
+	printf("%i commands: \n", pos+1);
+	for(int i=0; i<=pos; i++) {
+		int j = 0;
+		while(all_commands[i][j]) {
+			printf("%s ", all_commands[i][j]);
+			j++;
+		}
+		printf("\n");
+	}
+	
+	// check if running in background mode, if so, do not wait for the child.
+	if( strcmp(all_commands[pos][args_pos-1], "&") == 0) {
+		metadata[pos][METADATA_BG_MODE] = 1;
+		// ignore the ampersand in the command to be forked
+		all_commands[pos][args_pos-1] = NULL;
+		args_pos--; 
+	} 
+
+	// Create a child process which runs the command
+	int status, error;
+	pid_t pid;
+	if( (pid = fork()) < 0) {
+		perror("Failed to create a child process.\n");
+		exit(1);
+	} else if(pid == 0) { // child process	
+		// check if redirection
+		int redir = metadata[pos][METADATA_REDIR];
+		if(redir == REDIR_R || redir == REDIR_L) { 
+		//	printf("%i) Redirecting using %s\n", getpid(), args[redir_file_index]);	
+			int file;
+			int file_idx = metadata[pos][METADATA_FILE_IDX];
+			if(metadata[pos][METADATA_REDIR] == REDIR_R) {
+				file = open( all_commands[pos][file_idx], O_CREAT | O_RDWR, 0644);
+				dup2(file, STDOUT_FILENO); // sets file to stdout
+			} else {
+		//		printf("Redir left %s\n", args[redir_file_index]);	
+				file = open(all_commands[pos][file_idx], O_RDONLY, 0);
+				if(file < 0) printf("Failed to open file for redirection.\n");	
+				dup2(file, STDIN_FILENO); // sets file to stdin;	
+			}
+
+			close(file);
+			all_commands[pos][file_idx - 1] = NULL; // arguments after ">" invalidated
+		} 
+		
+		if(metadata[pos][METADATA_BG_MODE]) {
+			sleep(1);
+			printf("Process %i in background mode.\n", getpid());
+		}	
+	//	printf("%i) Child process. My parent %i\n", getpid(), getppid());
+	//	printf("Child will execute: ");
+	//	int j=0;
+	//	while(args[j]) {
+	//		printf("%s ", args[j]);
+	//		j++;
+	//	}
+	//	printf("\n");
+
+		// execute command
+		error = execvp(all_commands[pos][0], all_commands[pos]);
+		if(error < 0) { // only reaches here if error occurred
+			printf("Failed to run %s\n", all_commands[pos][0]);	
+			exit(1);
+		}	
+	}  else { // parent process
+		// printf("%i) Parent process. My child %i\n", getpid(), pid);
+		if(!metadata[pos][METADATA_BG_MODE]) {
+			error = waitpid(pid, &status, WUNTRACED); // wait for child to complete, if not in background mode	
+			if(error < 0) printf("%i) waitpid() for child process %i failed.\n", getpid(), pid);
+				
+			if(!WIFEXITED(status)) printf("%i) Child %i exited abnormally...\n", getpid(), pid);
+		} 
+	}	
+
 }
 
 int main(int argc, char** argv) {
@@ -24,125 +115,63 @@ int main(int argc, char** argv) {
 	// set up signal handler for child
 	signal(SIGCHLD, bg_process);
 
-	// set up pipe for parent-child communication
-	int fd[2];
-	pipe(fd); // creates pipe
-
-	char input[MAX_BUFFER_SIZE];
 	while(1) {
 		printf("minish> ");
-	//	pid = waitpid(-1, &status, WNOHANG); // wait for background process
-	////	if(WIFEXITED(status)) printf("%i) Child %i exited normally.\n", getpid(), pid);	
-		
+	
+		char input[MAX_BUFFER_SIZE]; // command line as as string	
+		int num_commands = 0;
+	
 		if(fgets(input, MAX_BUFFER_SIZE, stdin) != NULL) {
+
 			// remove the newline so that strcmp() works as desired
-			input[ strcspn(input, "\r\n") ] = 0; // strcpn(str1, str2) counts # of chars in str1 that is NOT is str2
+			input[ strcspn(input, "\r\n") ] = 0; 
 			
 			if(strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0) break;
-			else { // obtain the command line arguments
-				int bg_mode = 0;
-				int redir = NO_REDIR; // redirection
-				int redir_file_index = 0; // index in args[] where file is located
+				
+			int pos = 0;	
+			int args_pos = 0;
+			all_commands[pos] = (char**) malloc(MAX_ARGS * sizeof(char*)); // allocate for first command
 	
-				char** args = (char**) malloc(MAX_BUFFER_SIZE * sizeof(char*));
-				int num_args = 0;
-				
-				// get the first token (the command)
-				args[0] = strtok(input, " "); // strtk(string, delimiter)		
-				// obtain the rest of arguments
-				while( args[num_args] != NULL && num_args < MAX_ARGS ) {	
+			// get the first token (the command)
+			all_commands[pos][args_pos] = strtok(input, " "); // strtk(string, delimiter)		
+			// obtain the rest of arguments
+			while( all_commands[pos][args_pos] != NULL && args_pos < MAX_ARGS ) {	
 			
-					if( strcmp(">", args[num_args]) == 0) {
-					//	printf("Redirection right on\n");
-						redir = REDIR_R;	
-						redir_file_index = num_args + 1;
-					} else if(strcmp("<", args[num_args]) == 0) {
-					//	printf("Redirection left on\n");
-						redir = REDIR_L;
-						redir_file_index = num_args + 1;
-					}
-
-					num_args++;
-					args[num_args] = strtok(NULL, " ");
+				if( strcmp(">", all_commands[pos][args_pos]) == 0) {
+				//	printf("Redirection right on\n");
+					metadata[pos][METADATA_REDIR] = REDIR_R;	
+					metadata[pos][METADATA_FILE_IDX] = args_pos + 1;
+				} else if(strcmp("<", all_commands[pos][args_pos]) == 0) {
+				//	printf("Redirection left on\n");
+					metadata[pos][METADATA_REDIR] = REDIR_L;
+					metadata[pos][METADATA_FILE_IDX] = args_pos + 1;
+				} else if(strcmp("|", all_commands[pos][args_pos]) == 0) {
+					printf("Filter detected\n");	
+					all_commands[pos][args_pos] = NULL;
+					metadata[pos][METADATA_NUM_ARGS] = args_pos;
+					pos++;
 				}
-				args[num_args] = NULL; // must terminate arguments array with NULL pointer when exec()
-				
-				// debug
-			//	printf("%i) %i args\n", getpid(), num_args);
-			//	for(int i=0; i<num_args; i++) {
-			//		printf("arg %i: %s\n", i, args[i]);
-			//	}
-				
-				// check if running in background mode, if so, do not wait for the child.
-				if( strcmp(args[num_args-1], "&") == 0) {
-					bg_mode = 1;
-					// ignore the ampersand in the command to be forked
-					args[num_args-1] = NULL;
-					num_args--; 
-				} 
 
-				// Create a child process which runs the command
-				int status, error;
-				pid_t pid = fork();
-				if(pid == 0) { // child process
-		
-					// check if redirection
-					if(redir == REDIR_R || redir == REDIR_L ) { 
-					//	printf("%i) Redirecting using %s\n", getpid(), args[redir_file_index]);	
-						int file;
-						if(redir == REDIR_R) {
-							file = open(args[redir_file_index], O_CREAT | O_RDWR, 0644);
-							dup2(file, STDOUT_FILENO); // sets file to stdout
-						} else {
-					//		printf("Redir left %s\n", args[redir_file_index]);	
-							file = open(args[redir_file_index], O_RDONLY, 0);
-							if(file < 0) {
-								printf("Failed to open file %s for redirection.\n", args[redir_file_index]);
-								continue;
-							}
-							dup2(file, STDIN_FILENO); // sets file to stdin;	
-						}
+				if(!all_commands[pos]) {
+					all_commands[pos] = (char**) malloc(MAX_ARGS * sizeof(char*));	
+					args_pos = 0;
+				} else args_pos++;
 
-						close(file);
-						args[redir_file_index - 1] = NULL; // arguments after ">" invalidated
-					} 
-					
-					if(bg_mode) {
-						sleep(1);
-						printf("Process %i in background mode.\n", getpid());
-					}	
-				//	printf("%i) Child process. My parent %i\n", getpid(), getppid());
-				//	printf("Child will execute: ");
-				//	int j=0;
-				//	while(args[j]) {
-				//		printf("%s ", args[j]);
-				//		j++;
-				//	}
-				//	printf("\n");
-					// execute command
-					error = execvp(args[0], args);
-					if(error < 0) { // only reaches here if error occurred
-						printf("Failed to run %s\n", args[0]);	
-						exit(1);
-					}	
-				} else if (pid < 0) {
-					printf("%i) Failed to create child.\n", getpid());
-					exit(1);
-				} else { // parent process
-					// printf("%i) Parent process. My child %i\n", getpid(), pid);
-					if(!bg_mode) {
-						error = waitpid(pid, &status, WUNTRACED); // wait for child to complete, if not in background mode	
-						if(error < 0) {
-							printf("%i) waitpid() for child process %i failed.\n", getpid(), pid);
-						}
-						
-						if(WIFEXITED(status)) printf("%i) Child %i exited normally.\n", getpid(), pid);
-					} else continue;  		
-				}	
-				
-				free(args);	
-			} // obtain the command line arguments ; end
+				all_commands[pos][args_pos] = strtok(NULL, " ");
+			}		
+			metadata[pos][METADATA_NUM_ARGS] = args_pos;
+			num_commands = pos + 1;
+	
+			execute_commands(0);
 			
+			for(int i=0; i<num_commands; i++) {
+				free(all_commands[i]);	
+				all_commands[i] = NULL;
+				for(int j=0; j<METADATA_SIZE; j++) {
+					metadata[i][j] = 0;
+				}
+			}	
+						
 		} // read command and arguments ; end	
 	} // while(1) end	
 
