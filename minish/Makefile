@@ -1,10 +1,12 @@
-CC=gcc
-CFLAGS= -g -Wall
+CC = gcc
+CFLAGS = -g -Wall
+DEPS = minish.h
 
-minish: main.o
-	$(CC) $(CFLAGS) main.o -o minish
+%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-main.o: main.c
-	$(CC) $(CFLAGS) -c main.c
+minish: main.o minish.o
+	$(CC) main.o minish.o -o minish
+
 clean:
 	rm *.o minish
