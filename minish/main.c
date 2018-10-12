@@ -40,6 +40,10 @@ int main(int argc, char** argv) {
 				} else if(strcmp(c->argv[c->argc], "<") == 0) {
 					c->file_in = strtok(NULL, " "); // next token is the file name for left redirection
 					c->argc--; // exclude file name in argv
+				} else if(strcmp(c->argv[c->argc], "&") == 0) {
+					c->bg_mode = 1;
+					c->argv[c->argc] = strtok(NULL, " ");
+					continue;
 				} else if(strcmp(c->argv[c->argc], "|") == 0) {
 					c->argv[c->argc] = NULL; // overwrite "|"	
 					c->next = new_command();
@@ -51,7 +55,8 @@ int main(int argc, char** argv) {
 				c->argv[c->argc] = strtok(NULL, " ");
 			}	
 			print_commands(commands);
-			
+			execute_commands(commands);	
+		
 			free(commands);	
 		} // getline() ; end
 

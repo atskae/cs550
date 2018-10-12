@@ -23,5 +23,7 @@ typedef struct command_t {
 
 command_t* new_command();
 void print_commands(command_t* c);
+void error(char* msg);
+void execute_commands(command_t* c);
 
 #endif
