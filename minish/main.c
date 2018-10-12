@@ -42,19 +42,25 @@ int main(int argc, char** argv) {
 					c->argc--; // exclude file name in argv
 				} else if(strcmp(c->argv[c->argc], "&") == 0) {
 					c->bg_mode = 1;
-					c->argv[c->argc] = strtok(NULL, " ");
+					c->argv[c->argc] = NULL; // overwrite "&"
+					char* next  = strtok(NULL, " "); // get next token
+					if(next == NULL) continue;
+					c->next = new_command();
+					c->next->argv[0] = next; // read the next token of the next command, so must copy it over
+					c = c->next;
 					continue;
 				} else if(strcmp(c->argv[c->argc], "|") == 0) {
-					c->argv[c->argc] = NULL; // overwrite "|"	
+					c->argv[c->argc] = NULL; // overwrite "&"
 					c->next = new_command();
 					c = c->next;
-					c->argv[c->argc] = strtok(NULL, " ");
+					c->argv[c->argc] = strtok(NULL, " "); // get next token
 					continue;
-				}	
+				} 
+ 
 				c->argc++;
 				c->argv[c->argc] = strtok(NULL, " ");
 			}	
-			//print_commands(commands);
+		//	print_commands(commands);
 			
 			if(strcmp(commands->argv[0], "kill") == 0) {
 				pid_t kill_pid = atoi(commands->argv[1]);

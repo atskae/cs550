@@ -22,7 +22,7 @@ void error(char* msg) {
 void bg_process(int signal) {
 	int status;
 	pid_t pid = waitpid(-1, &status, WNOHANG);
-	 fprintf(stderr, "%i process exited.\n", pid);
+	//fprintf(stderr, "%i process exited.\n", pid);
 	if(pid > 0) bg_prog--;
 }
 
@@ -87,7 +87,7 @@ void execute_commands_r(command_t* c) {
 
 		int fd[2];
 		// check if pipes are needed
-		if(c->next) {
+		if(c->next && !c->bg_mode) {
 			if(pipe(fd) < 0) error("Failed to create pipe.\n");
 		}	
 		
@@ -103,7 +103,7 @@ void execute_commands_r(command_t* c) {
 				dup2(fd_in, STDIN_FILENO);
 				close(fd_in);
 			}
-			if(c->next) {
+			if(c->next && !c->bg_mode) {
 				dup2(fd[1], STDOUT_FILENO); // redirect stdout to write end of the pipe	
 				close(fd[1]);
 				close(fd[0]); // close the read end of the pipe
@@ -122,8 +122,10 @@ void execute_commands_r(command_t* c) {
 				if(file < 0) error("Failed to open file for right redirection.\n"); 
 				dup2(file, STDOUT_FILENO); // set stdout to file
 			}			
-			if(c->bg_mode) fprintf(stderr, "Process %i in background mode.\n", getpid()); 			
-		
+			if(c->bg_mode) {
+				bg_prog++;
+				fprintf(stderr, "Process %i in background mode.\n", getpid()); 			
+			}
 			// fprintf(stderr, "%i) executing %s\n", getpid(), c->argv[0]);	
 			err = execvp(c->argv[0], c->argv);
 			if(err < 0) error("execvp() failed.\n");
@@ -132,7 +134,7 @@ void execute_commands_r(command_t* c) {
 			//fprintf(stderr, "%i) Parent, my pgid: %i\n", getpid(), getpgid(getpid()));	
 			
 			// parent does not use pipe ; close
-			if(c->next) { // pipe was created
+			if(c->next && !c->bg_mode) { // pipe was created
 				fd_in = fd[0]; // set read end of the pipe to next child
 				close(fd[1]); // parent does not write to pipe ; close
 			}
@@ -140,7 +142,6 @@ void execute_commands_r(command_t* c) {
 			if(!c->bg_mode) {
 				err = waitpid(pid, &status, WUNTRACED); // blocking wait for child to complete
 				if(err < 0) fprintf(stderr, "%i) waitpid() for child process %i failed.\n", getpid(), pid);	
-				if(!WIFEXITED(status)) fprintf(stderr, "Child %i exited abnormally...\n", pid);		
 			} // signal handler will take care of background mode processes 
 		}
 
@@ -154,7 +155,6 @@ void execute_commands(command_t* c) {
 	shell_pid = getpid();
 
 	if(c->bg_mode) {
-		bg_prog++;
 		execute_commands_r(c); // do not fork an intermediate child
 	}
 	else {
@@ -180,7 +180,6 @@ void execute_commands(command_t* c) {
 		
 			err = waitpid(pid, &status, WUNTRACED); // blocking wait for child to complete
 			if(err < 0) fprintf(stderr, "%i) waitpid() for child process %i failed.\n", getpid(), pid);	
-			if(!WIFEXITED(status)) fprintf(stderr, "First child %i exited abnormally...\n", pid);	
 			fg_pid = -1; 
 		}
 	} // not background process ; end	
