@@ -8,16 +8,11 @@
 
 #include "minish.h"
 
-void bg_process(int signal) {
-	int status;
-	waitpid(-1, &status, WNOHANG);
-	//printf("%i process exited.\n", pid);
-}
-
 int main(int argc, char** argv) {
 
 	// set up signal handlers 
 	signal(SIGCHLD, bg_process); // checks if background process exited
+	signal(SIGINT, kill_fp); // control+C triggers this signal ; kill foreground process
 	
 	while(1) {
 		printf("minish> ");

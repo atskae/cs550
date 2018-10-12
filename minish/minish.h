@@ -21,6 +21,10 @@ typedef struct command_t {
 	
 } command_t;
 
+
+void bg_process(int signal);
+void kill_fp(int signal);
+
 command_t* new_command();
 void print_commands(command_t* c);
 void error(char* msg);
