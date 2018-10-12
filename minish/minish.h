@@ -21,11 +21,12 @@ typedef struct command_t {
 	
 } command_t;
 
-
+// signal handlers
 void bg_process(int signal);
 void kill_fp(int signal);
 
 command_t* new_command();
+void free_command(command_t* c);
 void print_commands(command_t* c);
 void error(char* msg);
 void execute_commands(command_t* c);

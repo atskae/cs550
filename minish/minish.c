@@ -12,6 +12,8 @@
 pid_t shell_pid;
 pid_t fg_pid = -1;
 
+int bg_prog = 0;
+
 void error(char* msg) {
 	perror(msg);
 	exit(1);
@@ -19,8 +21,9 @@ void error(char* msg) {
 
 void bg_process(int signal) {
 	int status;
-	waitpid(-1, &status, WNOHANG);
-	//printf("%i process exited.\n", pid);
+	pid_t pid = waitpid(-1, &status, WNOHANG);
+	 fprintf(stderr, "%i process exited.\n", pid);
+	if(pid > 0) bg_prog--;
 }
 
 void kill_fp(int signal) {
@@ -56,7 +59,8 @@ void free_command_r(command_t* c) {
 	free(c->argv);
 }
 void free_command(command_t* c) {
-	free_command_r(c);	
+	free_command_r(c);
+	free(c);
 }
 
 void print_commands(command_t* c) {
@@ -92,7 +96,7 @@ void execute_commands_r(command_t* c) {
 		if( (pid = fork()) < 0) error("Fork failed.\n");
 		else if (pid == 0) { // child process
 			
-			fprintf(stderr, "%i) Child, my process group %i, will execute %s\n", getpid(), getpgid(0), c->argv[0]);
+			// fprintf(stderr, "%i) Child, my process group %i, will execute %s\n", getpid(), getpgid(0), c->argv[0]);
 	
 			// if previous child wrote to write end of the previous pipe, this child should obtain stdin from read end of that pipe
 			if(fd_in != STDIN_FILENO) {
@@ -125,16 +129,18 @@ void execute_commands_r(command_t* c) {
 			if(err < 0) error("execvp() failed.\n");
 
 		} else { // parent process
-			fprintf(stderr, "%i) Parent, my pgid: %i\n", getpid(), getpgid(getpid()));	
+			//fprintf(stderr, "%i) Parent, my pgid: %i\n", getpid(), getpgid(getpid()));	
 			
 			// parent does not use pipe ; close
-			fd_in = fd[0]; // set read end of the pipe to next child
-			close(fd[1]); // parent does not write to pipe ; close
-			
+			if(c->next) { // pipe was created
+				fd_in = fd[0]; // set read end of the pipe to next child
+				close(fd[1]); // parent does not write to pipe ; close
+			}
+
 			if(!c->bg_mode) {
 				err = waitpid(pid, &status, WUNTRACED); // blocking wait for child to complete
 				if(err < 0) fprintf(stderr, "%i) waitpid() for child process %i failed.\n", getpid(), pid);	
-				if(WIFEXITED(status)) fprintf(stderr, "Child %i exited normally.\n", pid);		
+				if(!WIFEXITED(status)) fprintf(stderr, "Child %i exited abnormally...\n", pid);		
 			} // signal handler will take care of background mode processes 
 		}
 
@@ -147,34 +153,35 @@ void execute_commands(command_t* c) {
 	// set shell pid in case Control+C is sent
 	shell_pid = getpid();
 
-	// the first child will fork each command
-	int status, err;
-	pid_t pid;
-	if( (pid = fork()) < 0) error("Fork failed.\n");
-	else if(pid == 0) {
-		fg_pid = getpid();
-		err = setpgid(getpid(), fg_pid); // set process group ; the rest of the children will inherit this process group
-		if(err < 0) error("Failed to set process group.\n");
-		while(tcgetpgrp(STDIN_FILENO) != getpid()); // wait until parent gives terminal control to child
+	if(c->bg_mode) {
+		bg_prog++;
+		execute_commands_r(c); // do not fork an intermediate child
+	}
+	else {
+		// the first child will fork each command
+		int status, err;
+		pid_t pid;
+		if( (pid = fork()) < 0) error("Fork failed.\n");
+		else if(pid == 0) {
+			fg_pid = getpid();
+			err = setpgid(getpid(), fg_pid); // set process group ; the rest of the children will inherit this process group
+			if(err < 0) error("Failed to set process group.\n");
+			while(tcgetpgrp(STDIN_FILENO) != getpid()); // wait until parent gives terminal control to child
+			
+			execute_commands_r(c);
 		
-		fprintf(stderr, "%i) Will start executing commands.\n", getpid());
-		execute_commands_r(c);
-		fprintf(stderr, "%i) Completed my tasks.\n", getpid());
-	
-		err = tcsetpgrp(STDIN_FILENO, getppid()); // give terminal control back to parent
-		if(err < 0) error("Failed to return terminal control.\n");
-		exit(0);
-	} else {
-		fg_pid = pid;	
-		err = tcsetpgrp(STDIN_FILENO, pid); // give child process control of the terminal
-		if(err < 0) error("Failed to assign terminal control to child.\n");	
-	
-		err = waitpid(pid, &status, WUNTRACED); // blocking wait for child to complete
-		while(tcgetpgrp(STDIN_FILENO) != getpid()); // looks like this takes a bit to take effect
+			err = tcsetpgrp(STDIN_FILENO, getppid()); // give terminal control back to parent
+			if(err < 0) error("Failed to return terminal control.\n");
+			exit(0);
+		} else {
+			fg_pid = pid;	
+			err = tcsetpgrp(STDIN_FILENO, pid); // give child process control of the terminal
+			if(err < 0) error("Failed to assign terminal control to child.\n");	
 		
-		if(err < 0) fprintf(stderr, "%i) waitpid() for child process %i failed.\n", getpid(), pid);	
-		if(WIFEXITED(status)) fprintf(stderr, "First child %i exited normally.\n", pid);	
-		else fprintf(stderr, "First child %i exited abnormally...\n", pid);	
-		fg_pid = -1; 
-	}	
+			err = waitpid(pid, &status, WUNTRACED); // blocking wait for child to complete
+			if(err < 0) fprintf(stderr, "%i) waitpid() for child process %i failed.\n", getpid(), pid);	
+			if(!WIFEXITED(status)) fprintf(stderr, "First child %i exited abnormally...\n", pid);	
+			fg_pid = -1; 
+		}
+	} // not background process ; end	
 }

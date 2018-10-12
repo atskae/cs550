@@ -8,6 +8,8 @@
 
 #include "minish.h"
 
+extern int bg_prog;
+
 int main(int argc, char** argv) {
 
 	// set up signal handlers 
@@ -22,8 +24,11 @@ int main(int argc, char** argv) {
 		
 		if(getline(&line, &n, stdin) > 0) {
 			line[strcspn(line, "\r\n")] = 0;  // remove newline char for strcmp() to work
-			if(strcmp(line, "exit") == 0) break;	
-			
+			if(strcmp(line, "exit") == 0) {
+				free(line);
+				break;	
+			}
+
 			command_t* commands = new_command();
 			command_t* c = commands;	
 			c->argv[c->argc] = strtok(line, " "); // get first token
@@ -49,15 +54,30 @@ int main(int argc, char** argv) {
 				c->argc++;
 				c->argv[c->argc] = strtok(NULL, " ");
 			}	
-			print_commands(commands);
-			execute_commands(commands);	
-		
-			free(commands);	
+			//print_commands(commands);
+			
+			if(strcmp(commands->argv[0], "kill") == 0) {
+				pid_t kill_pid = atoi(commands->argv[1]);
+				fprintf(stderr, "%i) Killing process %i\n", getpid(), kill_pid);
+				int err = kill(kill_pid, SIGKILL);
+				if(err) error("Failed to kill process.\n");
+			} else execute_commands(commands);	
+					
+			free_command(commands);	
 		} // getline() ; end
 
 		free(line);
 			
-	} // while(1) ; end	
-	
+	} // while(1) ; end
+
+	// "exit" was issued ; reap the background child processes
+	if(bg_prog > 0) {
+		printf("Must wait for %i background processes before exiting.\n", bg_prog);
+		for(int i=0; i<bg_prog; i++) {
+			wait(NULL);	
+		}
+	}
+
+	printf("minish exiting.\n");	
 	return 0;
 }
