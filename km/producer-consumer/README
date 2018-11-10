@@ -1,0 +1,21 @@
+2. Run one consumer and one producer concurrently. To do this, open two text terminals. Run a consumer in one and a producer in another at the same time.)
+a) Kill the producer with Ctrl-C. Leave consumer running. What happens and why?
+- The consumer keeps on reading from the pipe, even though the producer has terminated. The return value is 0, errno is 0, perror indicates success. The consumer reaches EOF but there is no condition to exit the while(1) loop so the consumer keeps on reading an empty pipe.
+
+b) Kill the consumer with Ctrl-C. Leave producer running. What happens and why?
+- There is a broken pipe error when the producer tries to read the pipe after the consumer has terminated. This normally occurs on a pipe where there are no more readers left.
+
+--
+
+Note down what you observe, and why, in your README file. Do you see any race conditions? If not, can you reason about what could go wrong?
+
+3. Run one consumer and multiple producers concurrently.
+Running 3 producers and 1 consumer: the consumer appears to properly read all of the producer's items. If I ran 100 producers and 1 consumer, the consumer might be too slow to consume enough data in time, and all of the producers would have to block until there is enough room in the pipe again.
+
+4. Run multiple consumers and one producer concurrently.
+Running 1 producer and 3 consumers: interestingly, one consumer fails to read anything from the pipe, and while other two consumers are able to read. One consumer reads the even count values, and the other consumer reads the odd count values. The first consumer to run will eventually stops reading from the pipe when the other two consumers start running. I wonder how this happens on every run, and why the third consumer always fails to read when all three consumers are running.
+
+A race condition may be possible if more consumers are run. If there are more consumers than producers, it seems very inefficient because then most consumers would end up not doing anything, since data is not being produced fast enough.
+
+5. Run multiple consumers and multiple producers concurrently.
+Running 3 producers and 3 consumers. The same problem as observation 4 occurs where one consumer does nothing if all 3 consumers are running. Perhaps then the issue is not the insufficient rate of data production. This time the consumers switch between odd and event counts, and do not always read from all three of the producers. Though I do not see any issue with reading incorrect values or reading the same value twice... 
