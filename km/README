@@ -1,0 +1,53 @@
+Implementing a Shared Number Pipe as a Character Device
+- Kernel module maintains a FIFO queue, which can hold a maximum of N items
+- N (the maximum size of FIFO queue) is obtained as a parameter when module is loaded (insmod)
+- Ensure that user-level producers and consumers can access this shared FIFO queue by reading/writing to /dev/numpipe
+
+---
+Functions to Implement
+---
+
+The following functions in the file_operations struct (defined in linux/fs.h ; https://elixir.bootlin.com/linux/v4.14/source/include/linux/fs.h) need to be implemented in the kernel module:
+
+1. ssize_t read(struct file* file_ptr, char* user_buffer, size_t buffer_size, loff_t* file_offset) // loff_t = long offset
+- Reading is the equivalent of consuming data
+- Check if buffer if empty. If so, go to sleep
+- Else, lock the buffer, and extract an item from the buffer (put the item into the function parameter user_buffer)
+- If the buffer was previously full (but now is not, since an item was removed), wake up sleeping producers
+- Release the lock
+
+2. ssize_t write(struct file* file_ptr, char* user_buffer, size_t buffer_size, loff_t* file_offset)
+- Writing is the equivalent to producing data
+- Check if the buffer is full. If so, go to sleep
+- Else, lock the buffer, and add an item to the buffer (place the item in user_buffer into the shared FIFO queue)
+- If the buffer was previously empty, wake up the sleeping consumers
+- Release the lock
+
+3. int open(struct inode*, struct file*) // when /dev/numpipe is opened by a user-process
+- Update metadata (ex. increase the number of processes that currently have this device opened)
+
+4. int release(struct inode*, struct file*) // when /dev/numpipe is closed by a user-process
+- Update metadata (ex. decrease the number of processes that currently have this device opened)
+
+---
+Data Structures
+---
+
+1. Lock (mutex) to ensure mutual exclusion when user-level processes read/write to shared FIFO queue
+- static DEFINE_MUTEX(lock)
+
+2. Condition variable for full condition
+- Wait queue for consumers waiting for the FIFO queue to not be full
+- static wait_queue_head_t wq;
+ 
+3. Condition variable for empty condition
+- Wait queue for producers waiting for the FIFO queue to not be empty
+
+- Locks, semaphores, and condition variables in kernel: https://oscourse.github.io/slides/semaphores_waitqs_kernel_api.pdf
+
+4. Shared FIFO queue
+- Circular buffer ; can use head and tail pointers to the queue
+- kmalloc() N empty spots in the queue
+- Adding an item updates the tail_ptr
+- Removing an item updates the head_ptr
+- Must be careful in updating head and tail pointers ; must be circular updates (end of queue++ = beginning of queue)
