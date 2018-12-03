@@ -21,7 +21,7 @@ cd numpipe
 sudo insmod numpipe.ko max_size=N
 ```
 
-## Using `numpipe` with producers and consumers
+## Using device with producers and consumers
 Run a producer. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../

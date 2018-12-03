@@ -51,7 +51,7 @@ static struct file_operations fops = {
 
 static char* set_permissions(struct device* dev, umode_t* mode) {
 	if(mode) {
-		*mode = 666;
+		*mode = 0666;
 	}
 	return NULL;
 }
