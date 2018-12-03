@@ -2,40 +2,53 @@
 A kernel module `numpipe` that implements a UNIX named pipe (FIFO queue) as a character device. User-level producers and consumers can add and remove integers to the shared FIFO queue, respectively.
 
 ## Build numpipe
-Create a character device file associated with `numpipe`:
-```
-mknod /dev/numpipe c <Major> <Minor>
-```
-
-Build kernel module:
+1. Build kernel module:
 ```
 cd numpipe
 make
 ```
 
-Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
+2. To obtain the major number, load the kernel module first (go to "Loading kernel module" below), then type:
+```
+dmesg | grep "numpipe major"
+```
+A message indicating the major number should appear:
+```
+Device numpipe was successfully loaded. numpipe major 243
+```
+
+3. Create a character device file associated with `numpipe`:
+```
+sudo mknod /dev/numpipe c <Major> 0
+sudo chmod 666 /dev/numpipe
+```
+where <Major> is the major number obtained in Step 2. 
+
+4. Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
 make
 ```
 
-## Loading and running module
-Load the kernel module. Can specify the maximum size N of the shared FIFO queue (default size is 20):
+## Loading kernel module
+Load the kernel module, if the module has not been loaded (can check with `lsmod`). Can specify the maximum size N of the shared FIFO queue (default size is 20):
 ```
 cd numpipe
 sudo insmod numpipe.ko max_size=N
 ```
 
-Run a producer. If currently in the directory `numpipe/`, go back a directory:
+## Using `numpipe` with producers and consumers
+
+2. Run a producer. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
-./producer
+./producer /dev/numpipe
 ```
 
-Run a consumer. If currently in the directory `numpipe/`, go back a directory:
+3. Run a consumer. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
-./consumer
+./consumer /dev/numpipe
 ```
 
 Remove a producer/consumer with Control+C.

@@ -8,6 +8,8 @@
 // ; (kmalloc() allocates phyiscally contiguous)
 #include <linux/uaccess.h> // copy_to_user() ; copy_from_user()
 
+#include <linux/cdev.h> // to avoid using mknod
+
 #include "numpipe.h"
 
 #define SUCCESS 0
@@ -17,6 +19,10 @@
 /* Device Information */
 static int Major; // Major number assigned to device driver ; indicates which driver handles which device file
 static int Device_Open = 0; // number of users who currently opened device file
+static struct cdev device_cdev;
+static dev_t dev;
+static struct class* char_class;
+static struct device* device;
 
 /* Share FIFO queue */
 static int* queue = NULL; // shared FIFO queue
@@ -43,10 +49,65 @@ static struct file_operations fops = {
 	.release = device_release	
 };
 
+// registers device ; avoids usig mknod
+int register_chrdev2(void) {
+	
+	int err;
+	
+	// get Major number
+	err = alloc_chrdev_region(&dev, 0, 1, DEVICE_NAME); // alloc_chrdev_region(&dev, base minor, # devices, DEVICE_NAME);
+	if(err < 0) {
+		printk(KERN_ALERT "Failed to allocate character device. err=%i\n", err);	
+		return err;
+	}
+	Major = MAJOR(dev);
+
+	// create a class so that /dev file can be created
+	char_class = class_create(THIS_MODULE, DEVICE_NAME);
+	if( IS_ERR(char_class) ) {
+		printk(KERN_ALERT "Failed to create class.\n");	
+		return PTR_ERR(char_class);
+	}
+	
+	dev = MKDEV(Major, 0);
+
+	cdev_init(&device_cdev, &fops);
+	device_cdev.owner = THIS_MODULE;
+	device_cdev.ops = &fops;
+
+	// add device to the system
+	err = cdev_add(&device_cdev, dev, 1);		
+	if(err < 0) {
+		err = PTR_ERR(&device_cdev);
+		printk(KERN_ALERT "Failed to add device to system. err=%i\n", err);
+		return err;
+	}	
+
+	// create /dev file
+	device = device_create(char_class, NULL, dev, NULL, DEVICE_NAME);
+	if( IS_ERR(device) ) {
+		err = PTR_ERR(device);
+		printk(KERN_ALERT "Failed to create device.\n");
+	
+		// remove device	
+		cdev_del(&device_cdev);
+		return err;
+	}
+	
+	return Major;
+}
+
+void unregister_chrdev2(void) {
+	if(char_class) class_destroy(char_class);	
+	cdev_del(&device_cdev);
+	unregister_chrdev_region(dev, 1);	
+}
+
 // when device is first loaded into the kernel
 int init_module(void) {
 	// adding driver to the system
-	Major = register_chrdev(0, DEVICE_NAME, &fops); // 0: kernel assigns a free major number for this device
+	// Major = register_chrdev(0, DEVICE_NAME, &fops); // 0: kernel assigns a free major number for this device
+	Major = register_chrdev2();
 	if(Major < 0) {
 		printk(KERN_ALERT "Failed to register device with %i\n", Major);
 		return Major; // non-zero return value prevents loading this module
@@ -68,14 +129,15 @@ int init_module(void) {
 	//init_waitqueue_head(&producer_wq);
 	//init_waitqueue_head(&consumer_wq);
 
-	printk(KERN_INFO "Device %s was loaded with major %i\n", DEVICE_NAME, Major);
+	printk(KERN_INFO "Device %s was successfully loaded. %s major %i\n", DEVICE_NAME, DEVICE_NAME, Major);
 	printk(KERN_INFO "Shared FIFO queue max_size: %i\n", max_size);
 	return SUCCESS; // 0
 }
 
 // right before device is unloaded from kernel
 void cleanup_module(void) {
-	unregister_chrdev(Major, DEVICE_NAME);
+	//unregister_chrdev(Major, DEVICE_NAME);
+	unregister_chrdev2();
 	
 	// free memory of shared FIFO queue
 	vfree(queue);
