@@ -7,12 +7,8 @@ A kernel module `numpipe` that implements a UNIX named pipe (FIFO queue) as a ch
 cd numpipe
 make
 ```
-2. Set permissions on `numpipe` device file:
-```
-sudo chmod 666 /dev/numpipe
-```
 
-3. Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
+2. Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
 make
@@ -26,14 +22,13 @@ sudo insmod numpipe.ko max_size=N
 ```
 
 ## Using `numpipe` with producers and consumers
-
-2. Run a producer. If currently in the directory `numpipe/`, go back a directory:
+Run a producer. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
 ./producer /dev/numpipe
 ```
 
-3. Run a consumer. If currently in the directory `numpipe/`, go back a directory:
+Run a consumer. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
 ./consumer /dev/numpipe

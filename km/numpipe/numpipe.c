@@ -49,6 +49,13 @@ static struct file_operations fops = {
 	.release = device_release	
 };
 
+static char* set_permissions(struct device* dev, umode_t* mode) {
+	if(mode) {
+		*mode = 666;
+	}
+	return NULL;
+}
+
 // registers device ; avoids usig mknod
 int register_chrdev2(void) {
 	
@@ -68,6 +75,7 @@ int register_chrdev2(void) {
 		printk(KERN_ALERT "Failed to create class.\n");	
 		return PTR_ERR(char_class);
 	}
+	char_class->devnode = set_permissions; // allows user-level programs to access /dev/numpipe
 	
 	dev = MKDEV(Major, 0);
 
