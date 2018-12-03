@@ -7,24 +7,12 @@ A kernel module `numpipe` that implements a UNIX named pipe (FIFO queue) as a ch
 cd numpipe
 make
 ```
-
-2. To obtain the major number, load the kernel module first (go to "Loading kernel module" below), then type:
+2. Set permissions on `numpipe` device file:
 ```
-dmesg | grep "numpipe major"
-```
-A message indicating the major number should appear:
-```
-Device numpipe was successfully loaded. numpipe major 243
-```
-
-3. Create a character device file associated with `numpipe`:
-```
-sudo mknod /dev/numpipe c <Major> 0
 sudo chmod 666 /dev/numpipe
 ```
-where <Major> is the major number obtained in Step 2. 
 
-4. Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
+3. Build producer and consumer executables. If currently in the directory `numpipe/`, go back a directory:
 ```
 cd ../
 make

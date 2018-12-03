@@ -98,9 +98,10 @@ int register_chrdev2(void) {
 }
 
 void unregister_chrdev2(void) {
-	if(char_class) class_destroy(char_class);	
 	cdev_del(&device_cdev);
-	unregister_chrdev_region(dev, 1);	
+	device_destroy(char_class, dev);	
+	class_destroy(char_class);	
+	unregister_chrdev_region(dev, 1);
 }
 
 // when device is first loaded into the kernel
@@ -141,6 +142,8 @@ void cleanup_module(void) {
 	
 	// free memory of shared FIFO queue
 	vfree(queue);
+	
+	printk(KERN_ALERT "Device successfully removed.\n");
 }
 
 /*
@@ -231,4 +234,6 @@ static ssize_t device_write(struct file* filep, const char* buffer, size_t lengt
 
 	printk(KERN_INFO "Obtained item %i from user.\n", item);	
 	return sizeof(item);
-} 
+}
+
+MODULE_LICENSE("GPL"); 
