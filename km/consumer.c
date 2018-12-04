@@ -14,7 +14,7 @@
 int main(int argc, char *argv[]) {
 
 	int fd;
-	char numstr[MAXLEN];
+	//char numstr[MAXLEN];
 	int num_read;
 
 	if(argc != 2) {
